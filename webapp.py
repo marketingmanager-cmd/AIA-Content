@@ -706,10 +706,11 @@ body{margin:0;font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:
 /* steps */
 .steps{display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap}
 .steps .s{flex:1;min-width:84px;font-size:12px;color:var(--muted);padding:9px;border-radius:11px;
-  background:var(--surface);border:1px solid var(--line);text-align:center}
+  background:var(--surface);border:1px solid var(--line);text-align:center;cursor:pointer;transition:.15s}
 .steps .s b{display:block;font-size:11px;opacity:.75}
 .steps .s.on{background:var(--grad);color:#fff;border-color:transparent;box-shadow:0 6px 16px rgba(225,29,72,.30)}
 .steps .s.done{border-color:var(--blue);color:var(--blue)}
+.steps .s.done:hover{background:#fff6f7;box-shadow:0 4px 12px rgba(225,29,72,.18)}
 
 .sec{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;
   margin-bottom:16px;box-shadow:var(--shadow);display:none}
@@ -943,6 +944,8 @@ input:focus,select:focus{outline:0;border-color:var(--blue);background:#fff}
 .recap .rc{background:#fff;border:1px solid var(--line);border-left:4px solid var(--blue);border-radius:10px;
   padding:8px 12px;font-size:13px;box-shadow:var(--shadow)}
 .recap .rc b{color:var(--blue);font-size:11px;display:block;margin-bottom:2px}
+.recap .rc.edit{cursor:pointer;transition:.15s}
+.recap .rc.edit:hover{background:#fff6f7;border-left-color:#be123c;box-shadow:0 4px 12px rgba(225,29,72,.18);transform:translateX(2px)}
 
 /* phone mockups (พรีวิวเหมือนในมือถือ) */
 .phones{display:flex;gap:20px;flex-wrap:wrap;justify-content:center}
@@ -1065,8 +1068,8 @@ input:focus,select:focus{outline:0;border-color:var(--blue);background:#fff}
     <!-- ===== ขั้นตอนสร้างคอนเทนต์ (ใช้ร่วมกันทั้ง 2 เมนู) ===== -->
     <div id="wizard" style="display:none">
       <div class="steps">
-        <div class="s on" id="st2">1<b>Hook</b></div><div class="s" id="st3">2<b>แคปชัน</b></div>
-        <div class="s" id="st4">3<b>รูปภาพ</b></div><div class="s" id="st5">4<b>พรีวิว</b></div>
+        <div class="s on" id="st2" onclick="goStep(2)">1<b>Hook</b></div><div class="s" id="st3" onclick="goStep(3)">2<b>แคปชัน</b></div>
+        <div class="s" id="st4" onclick="goStep(4)">3<b>รูปภาพ</b></div><div class="s" id="st5" onclick="goStep(5)">4<b>พรีวิว</b></div>
       </div>
       <div id="recap" class="recap"></div>
       <section class="sec" id="s2"><h2><span class="n">1</span> เลือกพาดหัว (Hook)</h2><div id="hooks"></div></section>
@@ -1233,6 +1236,14 @@ function nav(v){
 function step(n){for(let i=2;i<=5;i++){const e=$("st"+i);e.classList.toggle("on",i===n);e.classList.toggle("done",i<n)}}
 // แสดงทีละขั้น — โชว์เฉพาะ section เดียว ที่เหลือซ่อน
 function open(id){['s2','s3','s4','s5'].forEach(s=>$(s).classList.toggle('on',s===id));window.scrollTo({top:0,behavior:'smooth'})}
+// ย้อนกลับ/ข้ามไปยังขั้นที่ต้องการ (ของที่เลือกไว้ยังอยู่ครบ คลิกใหม่เพื่อเปลี่ยนได้)
+function goStep(n){
+  if($("wizard").style.display==="none")return;
+  if(n>=3&&!st.hook){alert("เลือกพาดหัวก่อนนะคะ");return}
+  if(n>=4&&!st.caption){alert("เลือกแคปชันก่อนนะคะ");return}
+  if(n>=5&&!st.image_url){alert("เลือกรูปก่อนนะคะ");return}
+  step(n);open("s"+n);
+}
 
 function newsEmoji(cat){const c=(cat||"").toLowerCase();
   if(/สุขภาพ|โรค|รักษา|โรงพยาบาล|health|medical/.test(c))return"🏥";
@@ -1307,7 +1318,7 @@ async function start(ov){
   $('wizard').style.display='block';
   step(2);open("s2");$("hooks").innerHTML=LOAD("กำลังคิดพาดหัว 9 แบบ...");
   const d=await post("/api/hooks",{topic:st.topic,news:st.news});
-  renderPick("hooks",d.hooks,(it)=>{const b=it.text.split("\n");return `<pre>${b[0]}</pre>${b[1]?`<div class="sub">${b[1]}</div>`:""}`},(it)=>{st.hook=it.text.split("\n")[0];loadCaps()});
+  renderPick("hooks",d.hooks,(it)=>{const b=it.text.split("\n");return `<pre>${b[0]}</pre>${b[1]?`<div class="sub">${b[1]}</div>`:""}`},(it)=>{st.hook=it.text.split("\n")[0];st.caption="";st.image_url="";loadCaps()});
 }
 function renderPick(box,items,fmt,onPick){
   let h="",cur="";
@@ -1320,7 +1331,7 @@ async function loadCaps(){
   updateRecap();   // โชว์พาดหัวที่เพิ่งเลือก
   step(3);open("s3");$("caps").innerHTML=LOAD("กำลังเขียนแคปชัน...");
   const d=await post("/api/captions",{topic:st.topic,hook:st.hook,news:st.news});
-  renderPick("caps",d.captions,(it)=>`<pre>${it.text}</pre>`,(it)=>{st.caption=it.text;goImageStep()});
+  renderPick("caps",d.captions,(it)=>`<pre>${it.text}</pre>`,(it)=>{st.caption=it.text;st.image_url="";goImageStep()});
 }
 function updTextLevel(){
   const v=parseInt($("textLevel").value);
@@ -1378,8 +1389,8 @@ function pickImg(u,el){
 // ---- แถบสรุปสิ่งที่เลือก (ค้างอยู่ทุกขั้น) ----
 function updateRecap(){
   let h="";
-  if(st.hook)h+=`<div class="rc"><b>พาดหัวที่เลือก</b>${st.hook}</div>`;
-  if(st.caption)h+=`<div class="rc"><b>แคปชันที่เลือก</b>${st.caption.split("\n")[0].slice(0,90)}…</div>`;
+  if(st.hook)h+=`<div class="rc edit" onclick="goStep(2)" title="คลิกเพื่อเปลี่ยนพาดหัว"><b>พาดหัวที่เลือก ✏️</b>${st.hook}</div>`;
+  if(st.caption)h+=`<div class="rc edit" onclick="goStep(3)" title="คลิกเพื่อเปลี่ยนแคปชัน"><b>แคปชันที่เลือก ✏️</b>${st.caption.split("\n")[0].slice(0,90)}…</div>`;
   $("recap").innerHTML=h;
 }
 
