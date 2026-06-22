@@ -178,6 +178,30 @@ async def api_images(req: Request):
     return {"images": [{"url": "/img/" + os.path.basename(a["path"])} for a in arts]}
 
 
+RESIZE_PRESETS = {            # preset → (กว้าง, สูง)
+    "1x1": (1080, 1080),
+    "4x5": (1080, 1350),
+    "9x16": (1080, 1920),
+    "16x9": (1920, 1080),
+}
+
+
+@app.post("/api/resize")
+async def api_resize(req: Request):
+    d = await req.json()
+    name = os.path.basename((d.get("image_url") or "").replace("/img/", ""))
+    preset = d.get("preset")
+    if preset not in RESIZE_PRESETS or not (name.startswith("art_") and name.endswith(".png")):
+        return {"ok": False, "error": "พารามิเตอร์ไม่ถูกต้อง"}
+    src = os.path.join(HERE, name)
+    if not os.path.exists(src):
+        return {"ok": False, "error": "ไม่พบรูปต้นฉบับ — กรุณาสร้างรูปใหม่"}
+    W, H = RESIZE_PRESETS[preset]
+    out_name = f"{name[:-4]}_{preset}.png"
+    await run_in_threadpool(cb.resize_for_platform, src, os.path.join(HERE, out_name), W, H)
+    return {"ok": True, "url": "/img/" + out_name}
+
+
 @app.post("/api/agent-photo")
 async def api_agent_photo_upload(file: UploadFile = File(...)):
     # อัปโหลดรูปตัวแทน → เก็บเป็น agent_photo.png (ใช้ใส่ในรูป AI ที่สร้างทุกครั้ง)
@@ -937,6 +961,11 @@ input:focus,select:focus{outline:0;border-color:var(--blue);background:#fff}
 .txtslider input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--blue);
   border:3px solid #fff;box-shadow:0 1px 4px rgba(225,29,72,.4);cursor:pointer}
 .tsticks{display:flex;justify-content:space-between;margin-top:6px;font-size:10.5px;color:var(--muted)}
+/* ปุ่มดาวน์โหลดขนาดแพลตฟอร์ม */
+.sizegrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.sizegrid .btn{display:flex;flex-direction:column;align-items:flex-start;text-align:left;line-height:1.35;padding:11px 13px}
+.sizegrid .btn small{font-weight:400;opacity:.65;font-size:10.5px;margin-top:2px}
+@media(max-width:520px){.sizegrid{grid-template-columns:1fr}}
 
 /* recap chips (สิ่งที่เลือกไว้) */
 .recap{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
@@ -1095,6 +1124,16 @@ input:focus,select:focus{outline:0;border-color:var(--blue);background:#fff}
       <section class="sec" id="s5">
         <h2><span class="n">4</span> พรีวิวก่อนโพสต์</h2>
         <div class="preview" id="preview"><div class="ph">เลือกรูปในขั้นที่ 3 เพื่อดูพรีวิว</div></div>
+        <div class="obox" style="margin:14px 0">
+          <h4>📐 ดาวน์โหลดขนาดอื่น (สำหรับลงแพลตฟอร์มต่างๆ)</h4>
+          <div class="obsub">ใช้รูปที่เลือกปรับให้พอดีแต่ละแพลตฟอร์ม — เติมพื้นหลังเบลอ ไม่ตัดเนื้อหา/โลโก้ AIA</div>
+          <div class="sizegrid">
+            <button class="btn ghost" onclick="dlSize('1x1',this)">⬜ จัตุรัส 1:1<small>Facebook / IG ฟีด · 1080×1080</small></button>
+            <button class="btn ghost" onclick="dlSize('4x5',this)">📱 แนวตั้ง 4:5<small>IG ฟีด · 1080×1350</small></button>
+            <button class="btn ghost" onclick="dlSize('9x16',this)">📲 สตอรี่/รีล 9:16<small>IG / FB / TikTok · 1080×1920</small></button>
+            <button class="btn ghost" onclick="dlSize('16x9',this)">🖥️ แนวนอน 16:9<small>เว็บ / YouTube · 1920×1080</small></button>
+          </div>
+        </div>
         <select id="dest" style="display:none"><option value="telegram">📨 Telegram</option></select>
         <div class="fbnote">📨 ระบบจะส่ง <b>รูป + แคปชัน เข้า Telegram</b> ให้ — แล้วก๊อปไปโพสต์เองได้เลย</div>
         <label>ส่งเมื่อไหร่?</label>
@@ -1384,6 +1423,18 @@ async function uploadAgent(){
 function pickImg(u,el){
   st.image_url=u;document.querySelectorAll('#imgs img').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');
   buildPreview();step(5);open("s5");
+}
+async function dlSize(preset,btn){
+  if(!st.image_url){alert("เลือกรูปก่อนนะคะ");return}
+  const old=btn.innerHTML;btn.disabled=true;btn.style.opacity=.55;btn.innerHTML="⏳ กำลังปรับขนาด...";
+  try{
+    const r=await post("/api/resize",{image_url:st.image_url,preset:preset});
+    if(!r||!r.ok){alert((r&&r.error)||"ปรับขนาดไม่สำเร็จ");return}
+    const a=document.createElement("a");
+    a.href=r.url+"?t="+Date.now();a.download="AIA_"+preset+".png";
+    document.body.appendChild(a);a.click();a.remove();
+  }catch(e){alert("เกิดข้อผิดพลาด: "+e);}
+  finally{btn.disabled=false;btn.style.opacity=1;btn.innerHTML=old;}
 }
 
 // ---- แถบสรุปสิ่งที่เลือก (ค้างอยู่ทุกขั้น) ----

@@ -400,6 +400,28 @@ def _text_density_rule(level):
             "+ แถบติดต่อครบถ้วน จัดเลย์เอาต์ให้ยังอ่านง่ายและสวยงาม")
 
 
+def resize_for_platform(src, out, W, H):
+    # ปรับรูปที่สร้างแล้วให้ได้ขนาด WxH สำหรับแพลตฟอร์มอื่น
+    # วิธี: วางรูปเต็มใบ (ไม่ตัดเนื้อหา/โลโก้) บนพื้นหลังที่เป็นรูปเดิมขยายเบลอ (สไตล์ IG)
+    from PIL import ImageFilter, ImageEnhance
+    im = Image.open(src).convert("RGB")
+    w, h = im.size
+    s = min(W / w, H / h)                       # contain: เห็นรูปครบทั้งใบ
+    fw, fh = max(1, round(w * s)), max(1, round(h * s))
+    fg = im.resize((fw, fh), Image.LANCZOS)
+    if fw == W and fh == H:                      # อัตราส่วนตรงพอดี ไม่ต้องเติมพื้นหลัง
+        fg.save(out, "PNG"); return
+    sc = max(W / w, H / h)                        # cover: ขยายเต็มเฟรมแล้วครอบกลาง
+    bw, bh = max(1, round(w * sc)), max(1, round(h * sc))
+    bg = im.resize((bw, bh), Image.LANCZOS)
+    left, top = (bw - W) // 2, (bh - H) // 2
+    bg = bg.crop((left, top, left + W, top + H))
+    bg = bg.filter(ImageFilter.GaussianBlur(30))
+    bg = ImageEnhance.Brightness(bg).enhance(0.80)   # หรี่พื้นหลังนิดให้รูปหลักเด่น
+    bg.paste(fg, ((W - fw) // 2, (H - fh) // 2))
+    bg.save(out, "PNG")
+
+
 def make_ai_images(hook, caption, n=2, mode="main", text_level=50):
     # มีรูปตัวแทน → images.edit: ให้ AI วาดตัวแทนเข้าฉาก คงใบหน้าให้ใกล้เคียงสุด + จัดท่ามืออาชีพ + พื้นหลังเหมาะสม
     # ไม่มีรูปตัวแทน → generate: ภาพคนจริงที่เกี่ยวกับเนื้อหา
