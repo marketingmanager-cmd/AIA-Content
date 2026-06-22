@@ -45,8 +45,31 @@ def verify_pw(pw, stored):
         return False
 
 
-SESSIONS = {}   # sid -> {"user":..,"role":..}  (อยู่ในหน่วยความจำ — รีสตาร์ทแล้วต้องล็อกอินใหม่)
 AUTH_ENABLED = os.getenv("AUTH_ENABLED", "1") != "0"   # ตั้ง AUTH_ENABLED=0 ใน .env เพื่อปิดล็อกอิน
+# session แบบ cookie เซ็นลายเซ็น (stateless) — secret ผูกกับ ADMIN_PASS จึงคงที่ข้ามรีสตาร์ท/หลับ-ตื่น
+_SECRET = (os.getenv("ADMIN_PASS", "aia-default") + "::aia-session-v1").encode()
+
+
+def _sign_token(user, role, days=30):
+    import base64
+    body = base64.urlsafe_b64encode(json.dumps(
+        {"u": user, "r": role, "exp": int(time.time()) + days * 86400}).encode()).decode()
+    sig = hashlib.sha256(_SECRET + body.encode()).hexdigest()[:32]
+    return body + "." + sig
+
+
+def _verify_token(token):
+    import base64
+    try:
+        body, sig = (token or "").rsplit(".", 1)
+        if hashlib.sha256(_SECRET + body.encode()).hexdigest()[:32] != sig:
+            return None
+        d = json.loads(base64.urlsafe_b64decode(body))
+        if d.get("exp", 0) < time.time():
+            return None
+        return {"user": d["u"], "role": d["r"]}
+    except Exception:
+        return None
 
 
 def db_init():
@@ -76,7 +99,7 @@ db_init()
 def current_user(request):
     if not AUTH_ENABLED:                       # ปิดล็อกอิน → ทุกคนเป็นแอดมิน
         return {"user": "guest", "role": "admin"}
-    return SESSIONS.get(request.cookies.get("sid"))
+    return _verify_token(request.cookies.get("sid"))
 
 
 def deliver(post):
@@ -536,16 +559,14 @@ async def api_login(req: Request):
         row = c.execute("SELECT * FROM users WHERE username=?", (u,)).fetchone()
     if not row or not verify_pw(p, row["pw"]):
         return JSONResponse({"ok": False, "error": "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"})
-    sid = secrets.token_hex(16)
-    SESSIONS[sid] = {"user": u, "role": row["role"]}
     resp = JSONResponse({"ok": True, "user": u, "role": row["role"]})
-    resp.set_cookie("sid", sid, httponly=True, max_age=7 * 86400, samesite="lax")
+    resp.set_cookie("sid", _sign_token(u, row["role"]), httponly=True,
+                    max_age=30 * 86400, samesite="lax")   # อยู่ได้ 30 วัน ข้ามรีสตาร์ทไม่หลุด
     return resp
 
 
 @app.post("/api/logout")
 def api_logout(request: Request):
-    SESSIONS.pop(request.cookies.get("sid"), None)
     resp = JSONResponse({"ok": True})
     resp.delete_cookie("sid")
     return resp
@@ -595,10 +616,6 @@ async def api_users_delete(request: Request):
         if c.execute("SELECT COUNT(*) FROM users").fetchone()[0] <= 1:
             return {"ok": False, "error": "ต้องเหลือผู้ใช้อย่างน้อย 1 คน"}
         c.execute("DELETE FROM users WHERE username=?", (u,))
-    # เตะ session ของคนที่ถูกลบออก
-    for sid, s in list(SESSIONS.items()):
-        if s["user"] == u:
-            SESSIONS.pop(sid, None)
     return {"ok": True}
 
 
