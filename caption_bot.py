@@ -348,9 +348,35 @@ IMG_THEME = ("โทนสีหลักแดง-ขาว ดูสะอา�
              "ห้ามมีวงกลมรูปโปรไฟล์/อวตาร/รูปถ่ายในกรอบวงกลมในภาพ — แถบติดต่อให้เป็นข้อความล้วน (ชื่อ/Line/เบอร์) ไม่มีรูปหน้าในวงกลม")
 
 
+def _overlay_aia_text(path):
+    # แปะตัวอักษร "AIA" มุมขวาบน (ข้อความล้วน ไม่ใช่โลโก้กราฟิก)
+    try:
+        base = Image.open(path).convert("RGBA")
+        W = base.width
+        fs = int(W * 0.055)
+        try:
+            font = ImageFont.truetype(FONT_BOLD, fs)
+        except Exception:
+            font = ImageFont.load_default()
+        d = ImageDraw.Draw(base)
+        txt = "AIA"
+        bb = d.textbbox((0, 0), txt, font=font)
+        tw, th = bb[2] - bb[0], bb[3] - bb[1]
+        m = int(W * 0.038)
+        pad = int(fs * 0.4)
+        bx2, by1 = base.width - m, m
+        bx1, by2 = bx2 - tw - pad * 2, by1 + th + pad * 2
+        d.rounded_rectangle([bx1, by1, bx2, by2], radius=int((by2 - by1) * 0.3), fill=(255, 255, 255, 235))
+        d.text((bx1 + pad - bb[0], by1 + pad - bb[1]), txt, font=font, fill=(225, 29, 72, 255))
+        base.convert("RGB").save(path, "PNG")
+    except Exception as e:
+        print("aia text fail:", str(e)[:120])
+
+
 def make_ai_images(hook, caption, n=2, mode="main"):
     # มีรูปตัวแทน → images.edit: ให้ AI วาดตัวแทนเข้าฉาก คงใบหน้าให้ใกล้เคียงสุด + จัดท่ามืออาชีพ + พื้นหลังเหมาะสม
     # ไม่มีรูปตัวแทน → generate: ภาพคนจริงที่เกี่ยวกับเนื้อหา
+    # ทุกกรณี: แปะตัวอักษร "AIA" มุมขวาบน
     photo = AGENT_PHOTO if os.path.exists(AGENT_PHOTO) else None
     arts = []
     if photo:
@@ -367,6 +393,7 @@ def make_ai_images(hook, caption, n=2, mode="main"):
                 path = os.path.join(os.path.dirname(__file__), f"art_{i}.png")
                 with open(path, "wb") as f:
                     f.write(base64.b64decode(d.b64_json))
+                _overlay_aia_text(path)                     # แปะ "AIA" มุมขวาบน
                 arts.append({"cat": "GPT Image", "path": path})
             return arts
         except Exception as e:
@@ -381,6 +408,7 @@ def make_ai_images(hook, caption, n=2, mode="main"):
         path = os.path.join(os.path.dirname(__file__), f"art_{i}.png")
         with open(path, "wb") as f:
             f.write(base64.b64decode(d.b64_json))
+        _overlay_aia_text(path)                             # แปะ "AIA" มุมขวาบน
         arts.append({"cat": "GPT Image", "path": path})
     return arts
 
