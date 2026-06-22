@@ -1051,13 +1051,8 @@ input:focus,select:focus{outline:0;border-color:var(--blue);background:#fff}
             <button class="btn ghost" onclick="uploadAgent()">📤 อัปโหลด/เปลี่ยนรูป</button>
             <button class="btn red" id="agentDelBtn" onclick="deleteAgent()" style="display:none">🗑️ ลบรูปตัวแทน</button>
           </div>
-          <label style="margin:6px 0 3px">ให้ตัวแทนอยู่ตรงไหนในรูป?</label>
-          <div class="chips" id="agentMode">
-            <button class="chip on" data-m="avatar" onclick="setAgentMode('avatar',this)">🔵 อวตารมุมล่าง (เร็ว)</button>
-            <button class="chip" data-m="main" onclick="setAgentMode('main',this)">🧍 เป็นรูปหลักในภาพ (ช้ากว่า)</button>
-          </div>
-          <div class="btnrow"><button class="btn block" onclick="loadImgs()">✨ สร้างรูปตามที่เลือก</button></div>
-          <div class="fbnote">อัปโหลดรูปตัวแทนครั้งเดียว ใช้ได้ตลอด · เลือกโหมด แล้วกด "✨ สร้างรูป" · กดซ้ำเพื่อสุ่มใหม่ได้</div>
+          <div class="btnrow"><button class="btn block" onclick="loadImgs()">✨ สร้างรูป</button></div>
+          <div class="fbnote">ถ้าอัปโหลดรูปตัวแทน → AI จะสร้างตัวแทนเป็นเนื้อภาพ (อยู่ในฉากจริง) โทนแดง-ขาว · ไม่อัปโหลดก็สร้างรูปปกติได้ · กดซ้ำเพื่อสุ่มใหม่</div>
         </div>
         <div id="imgs" class="imgs"></div></section>
       <section class="sec" id="s5">
@@ -1300,7 +1295,7 @@ function goImageStep(){   // ไปขั้นรูปแต่ยังไม
 async function loadImgs(){
   updateRecap();   // โชว์พาดหัว + แคปชันที่เลือก
   step(4);open("s4");agentStatus();
-  $("imgs").innerHTML=LOAD(st.agentMode==='main'?"AI กำลังสร้างรูป (ตัวแทนเป็นรูปหลัก ~30-40 วิ)...":"AI กำลังสร้างรูป 2 แบบ (~30 วิ รอสักครู่นะคะ)...");
+  $("imgs").innerHTML=LOAD("AI กำลังสร้างรูป... (~30 วิ รอสักครู่นะคะ)");
   const d=await post("/api/images",{hook:st.hook,caption:st.caption,mode:st.agentMode});
   $("imgs").innerHTML=d.images.map(im=>`<img src="${im.url}?t=${Date.now()}" onclick="pickImg('${im.url}',this)">`).join("")
     +'<div class="sub" style="grid-column:1/3;color:var(--muted);font-size:12px">👆 เลือกรูป 1 อันเพื่อไปหน้าพรีวิว</div>';
