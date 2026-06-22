@@ -352,7 +352,7 @@ def make_ai_images(hook, caption, n=2, agent_photo=None):
         try:
             with open(photo, "rb") as imgf:
                 resp = client.images.edit(model=IMAGE_MODEL, image=imgf, prompt=prompt,
-                                          size="1024x1024", n=n)
+                                          size="1024x1024", quality=IMAGE_QUALITY, n=1)
             for i, d in enumerate(resp.data):
                 path = os.path.join(os.path.dirname(__file__), f"art_{i}.png")
                 with open(path, "wb") as f:

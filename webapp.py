@@ -1292,7 +1292,7 @@ function goImageStep(){   // ไปขั้นรูปแต่ยังไม
 }
 async function loadImgs(){
   updateRecap();   // โชว์พาดหัว + แคปชันที่เลือก
-  step(4);open("s4");agentStatus();$("imgs").innerHTML=LOAD("AI กำลังสร้างรูป 2 แบบ (รอสักครู่)...");
+  step(4);open("s4");agentStatus();$("imgs").innerHTML=LOAD("AI กำลังสร้างรูป... (มีรูปตัวแทนจะนานหน่อย ~30 วิ รอสักครู่นะคะ)");
   const d=await post("/api/images",{hook:st.hook,caption:st.caption});
   $("imgs").innerHTML=d.images.map(im=>`<img src="${im.url}?t=${Date.now()}" onclick="pickImg('${im.url}',this)">`).join("")
     +'<div class="sub" style="grid-column:1/3;color:var(--muted);font-size:12px">👆 เลือกรูป 1 อันเพื่อไปหน้าพรีวิว</div>';
