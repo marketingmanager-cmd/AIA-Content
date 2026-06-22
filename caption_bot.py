@@ -367,18 +367,38 @@ def _overlay_agent_avatar(path):
         print("overlay avatar fail:", str(e)[:120])
 
 
-def make_ai_images(hook, caption, n=2, agent_photo=None):
-    # สร้างรูปด้วย GPT Images 2.0 (low) ขนาด 1:1 — เร็ว
-    # ถ้ามีรูปตัวแทน → แปะรูปตัวแทนจริงเป็นวงกลมมุมล่างซ้ายให้ทุกรูป
+def make_ai_images(hook, caption, n=2, mode="avatar"):
+    # mode="main"  → เอาตัวแทนเป็นรูปหลักในฉาก (images.edit, คงใบหน้า) — ช้ากว่า
+    # mode="avatar"→ สร้างรูปปกติ + แปะรูปตัวแทนเป็นวงกลมมุมล่างซ้าย — เร็ว (ค่าเริ่มต้น)
+    photo = AGENT_PHOTO if os.path.exists(AGENT_PHOTO) else None
+    arts = []
+    # ----- โหมดรูปหลัก: ตัวแทนอยู่ในฉาก -----
+    if photo and mode == "main":
+        prompt = ("สร้างรูปโฆษณาประกันขนาด 1:1 โดยให้ 'บุคคลในรูปต้นแบบ' (ตัวแทนประกัน) เป็นตัวหลักในรูป "
+                  "คงใบหน้าและลักษณะให้เหมือนเดิม จัดฉาก/พื้นหลัง/ข้อความให้เข้ากับเนื้อหานี้\n"
+                  f"Hook : {hook}\nCaption : {caption}")
+        try:
+            with open(photo, "rb") as imgf:
+                resp = client.images.edit(model=IMAGE_MODEL, image=imgf, prompt=prompt,
+                                          size="1024x1024", quality=IMAGE_QUALITY, n=1)
+            for i, d in enumerate(resp.data):
+                path = os.path.join(os.path.dirname(__file__), f"art_{i}.png")
+                with open(path, "wb") as f:
+                    f.write(base64.b64decode(d.b64_json))
+                arts.append({"cat": "GPT Image", "path": path})
+            return arts
+        except Exception as e:
+            print("⚠️ images.edit (รูปหลัก) ล้มเหลว, ใช้แบบอวตารแทน:", str(e)[:160])
+    # ----- โหมดอวตาร / ไม่มีตัวแทน: สร้างปกติ แล้วแปะอวตารถ้ามี -----
     prompt = f"สร้างรูปขนาด 1:1 ตามนี้\nHook : {hook}\nCaption : {caption}"
     resp = client.images.generate(model=IMAGE_MODEL, prompt=prompt,
                                    size="1024x1024", quality=IMAGE_QUALITY, n=n)
-    arts = []
     for i, d in enumerate(resp.data):
         path = os.path.join(os.path.dirname(__file__), f"art_{i}.png")
         with open(path, "wb") as f:
             f.write(base64.b64decode(d.b64_json))
-        _overlay_agent_avatar(path)                         # แปะหน้าตัวแทนจริง (ถ้ามี)
+        if photo:
+            _overlay_agent_avatar(path)                     # แปะหน้าตัวแทนจริงมุมล่างซ้าย
         arts.append({"cat": "GPT Image", "path": path})
     return arts
 

@@ -149,7 +149,8 @@ async def api_captions(req: Request):
 @app.post("/api/images")
 async def api_images(req: Request):
     d = await req.json()
-    arts = await run_in_threadpool(cb.make_ai_images, d.get("hook", ""), d.get("caption", ""))
+    mode = d.get("mode") if d.get("mode") in ("main", "avatar") else "avatar"
+    arts = await run_in_threadpool(cb.make_ai_images, d.get("hook", ""), d.get("caption", ""), 2, mode)
     return {"images": [{"url": "/img/" + os.path.basename(a["path"])} for a in arts]}
 
 
@@ -1045,13 +1046,18 @@ input:focus,select:focus{outline:0;border-color:var(--blue);background:#fff}
         <div class="obox" style="margin-bottom:14px">
           <h4>📸 รูปตัวแทน (ใส่ในรูปด้วย)</h4>
           <div class="obsub" id="agentStatus">กำลังเช็ค...</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
             <input type="file" id="agentFile" accept="image/*" style="flex:1;min-width:180px">
             <button class="btn ghost" onclick="uploadAgent()">📤 อัปโหลด/เปลี่ยนรูป</button>
             <button class="btn red" id="agentDelBtn" onclick="deleteAgent()" style="display:none">🗑️ ลบรูปตัวแทน</button>
-            <button class="btn" onclick="loadImgs()">✨ สร้างรูป</button>
           </div>
-          <div class="fbnote">อัปโหลดครั้งเดียว ใช้กับทุกรูปที่สร้างต่อจากนี้ · อัปโหลดเสร็จแล้วกด "✨ สร้างรูป" · กดซ้ำเพื่อสร้างใหม่ได้</div>
+          <label style="margin:6px 0 3px">ให้ตัวแทนอยู่ตรงไหนในรูป?</label>
+          <div class="chips" id="agentMode">
+            <button class="chip on" data-m="avatar" onclick="setAgentMode('avatar',this)">🔵 อวตารมุมล่าง (เร็ว)</button>
+            <button class="chip" data-m="main" onclick="setAgentMode('main',this)">🧍 เป็นรูปหลักในภาพ (ช้ากว่า)</button>
+          </div>
+          <div class="btnrow"><button class="btn block" onclick="loadImgs()">✨ สร้างรูปตามที่เลือก</button></div>
+          <div class="fbnote">อัปโหลดรูปตัวแทนครั้งเดียว ใช้ได้ตลอด · เลือกโหมด แล้วกด "✨ สร้างรูป" · กดซ้ำเพื่อสุ่มใหม่ได้</div>
         </div>
         <div id="imgs" class="imgs"></div></section>
       <section class="sec" id="s5">
@@ -1170,7 +1176,8 @@ input:focus,select:focus{outline:0;border-color:var(--blue);background:#fff}
 </div>
 
 <script>
-let st={topic:"",hook:"",caption:"",image_url:"",news:null};
+let st={topic:"",hook:"",caption:"",image_url:"",news:null,agentMode:"avatar"};
+function setAgentMode(m,el){st.agentMode=m;document.querySelectorAll('#agentMode .chip').forEach(c=>c.classList.toggle('on',c===el));}
 const $=id=>document.getElementById(id);
 async function post(u,b){const r=await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b||{})});return r.json()}
 const LOAD=t=>`<div class="loadwrap"><div class="loadbar"><i></i></div><span>${t}</span></div>`;
@@ -1292,8 +1299,9 @@ function goImageStep(){   // ไปขั้นรูปแต่ยังไม
 }
 async function loadImgs(){
   updateRecap();   // โชว์พาดหัว + แคปชันที่เลือก
-  step(4);open("s4");agentStatus();$("imgs").innerHTML=LOAD("AI กำลังสร้างรูป 2 แบบ (~30 วิ รอสักครู่นะคะ)...");
-  const d=await post("/api/images",{hook:st.hook,caption:st.caption});
+  step(4);open("s4");agentStatus();
+  $("imgs").innerHTML=LOAD(st.agentMode==='main'?"AI กำลังสร้างรูป (ตัวแทนเป็นรูปหลัก ~30-40 วิ)...":"AI กำลังสร้างรูป 2 แบบ (~30 วิ รอสักครู่นะคะ)...");
+  const d=await post("/api/images",{hook:st.hook,caption:st.caption,mode:st.agentMode});
   $("imgs").innerHTML=d.images.map(im=>`<img src="${im.url}?t=${Date.now()}" onclick="pickImg('${im.url}',this)">`).join("")
     +'<div class="sub" style="grid-column:1/3;color:var(--muted);font-size:12px">👆 เลือกรูป 1 อันเพื่อไปหน้าพรีวิว</div>';
 }
