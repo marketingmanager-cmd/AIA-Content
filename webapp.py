@@ -173,7 +173,8 @@ async def api_captions(req: Request):
 async def api_images(req: Request):
     d = await req.json()
     mode = d.get("mode") if d.get("mode") in ("main", "avatar") else "avatar"
-    arts = await run_in_threadpool(cb.make_ai_images, d.get("hook", ""), d.get("caption", ""), 2, mode)
+    text_level = d.get("text_level", 50)
+    arts = await run_in_threadpool(cb.make_ai_images, d.get("hook", ""), d.get("caption", ""), 2, mode, text_level)
     return {"images": [{"url": "/img/" + os.path.basename(a["path"])} for a in arts]}
 
 
@@ -924,6 +925,17 @@ input:focus,select:focus{outline:0;border-color:var(--blue);background:#fff}
 .divider{display:flex;align-items:center;gap:12px;margin:14px 0;color:var(--muted);font-size:12px}
 .divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--line)}
 .fbnote{font-size:12px;color:var(--muted);margin:6px 0 2px}
+/* สไลเดอร์ปริมาณตัวหนังสือในรูป */
+.txtslider{margin:12px 0 4px;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:#fff}
+.tsrow{display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:8px}
+.tsrow b{color:var(--blue);font-size:13px}
+.txtslider input[type=range]{width:100%;-webkit-appearance:none;appearance:none;height:6px;border-radius:6px;
+  background:linear-gradient(90deg,#fde2e7,var(--blue));outline:none;cursor:pointer}
+.txtslider input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;
+  border-radius:50%;background:var(--blue);border:3px solid #fff;box-shadow:0 1px 4px rgba(225,29,72,.4);cursor:pointer}
+.txtslider input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--blue);
+  border:3px solid #fff;box-shadow:0 1px 4px rgba(225,29,72,.4);cursor:pointer}
+.tsticks{display:flex;justify-content:space-between;margin-top:6px;font-size:10.5px;color:var(--muted)}
 
 /* recap chips (สิ่งที่เลือกไว้) */
 .recap{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
@@ -1068,8 +1080,13 @@ input:focus,select:focus{outline:0;border-color:var(--blue);background:#fff}
             <button class="btn ghost" onclick="uploadAgent()">📤 อัปโหลด/เปลี่ยนรูป</button>
             <button class="btn red" id="agentDelBtn" onclick="deleteAgent()" style="display:none">🗑️ ลบรูปตัวแทน</button>
           </div>
+          <div class="txtslider">
+            <div class="tsrow"><span>📝 ปริมาณตัวหนังสือในรูป</span><b id="tlVal">ปานกลาง · 50%</b></div>
+            <input type="range" id="textLevel" min="0" max="100" step="5" value="50" oninput="updTextLevel()">
+            <div class="tsticks"><span>ไม่มี</span><span>น้อย</span><span>ปานกลาง</span><span>เยอะ</span><span>เต็ม</span></div>
+          </div>
           <div class="btnrow"><button class="btn block" onclick="loadImgs()">✨ สร้างรูป</button></div>
-          <div class="fbnote">ถ้าอัปโหลดรูปตัวแทน → AI จะสร้างตัวแทนเป็นเนื้อภาพ (อยู่ในฉากจริง) โทนแดง-ขาว · ไม่อัปโหลดก็สร้างรูปปกติได้ · กดซ้ำเพื่อสุ่มใหม่</div>
+          <div class="fbnote">ถ้าอัปโหลดรูปตัวแทน → AI จะสร้างตัวแทนเป็นเนื้อภาพ (อยู่ในฉากจริง) โทนแดง-ขาว · ไม่อัปโหลดก็สร้างรูปปกติได้ · กดซ้ำเพื่อสุ่มใหม่ · เลื่อนแถบเพื่อปรับปริมาณตัวหนังสือ (น้อย = ภาพคมสวยกว่า)</div>
         </div>
         <div id="imgs" class="imgs"></div></section>
       <section class="sec" id="s5">
@@ -1305,6 +1322,16 @@ async function loadCaps(){
   const d=await post("/api/captions",{topic:st.topic,hook:st.hook,news:st.news});
   renderPick("caps",d.captions,(it)=>`<pre>${it.text}</pre>`,(it)=>{st.caption=it.text;goImageStep()});
 }
+function updTextLevel(){
+  const v=parseInt($("textLevel").value);
+  let label;
+  if(v<=5)label="ไม่มีตัวหนังสือ";
+  else if(v<=33)label="น้อย";
+  else if(v<=66)label="ปานกลาง";
+  else if(v<=90)label="เยอะ";
+  else label="เต็มที่";
+  $("tlVal").textContent=label+" · "+v+"%";
+}
 function goImageStep(){   // ไปขั้นรูปแต่ยังไม่สร้าง — รออัปโหลดตัวแทน + กดปุ่มก่อน
   updateRecap();step(4);open("s4");agentStatus();
   $("imgs").innerHTML='<div class="empty">👆 อัปโหลดรูปตัวแทนก่อน (ถ้าต้องการให้มีตัวแทนในรูป) แล้วกด "✨ สร้างรูป"</div>';
@@ -1313,7 +1340,8 @@ async function loadImgs(){
   updateRecap();   // โชว์พาดหัว + แคปชันที่เลือก
   step(4);open("s4");agentStatus();
   $("imgs").innerHTML=LOAD("AI กำลังสร้างรูป... (~30 วิ รอสักครู่นะคะ)");
-  const d=await post("/api/images",{hook:st.hook,caption:st.caption,mode:st.agentMode});
+  const tl=$("textLevel")?parseInt($("textLevel").value):50;
+  const d=await post("/api/images",{hook:st.hook,caption:st.caption,mode:st.agentMode,text_level:tl});
   $("imgs").innerHTML=d.images.map(im=>`<img src="${im.url}?t=${Date.now()}" onclick="pickImg('${im.url}',this)">`).join("")
     +'<div class="sub" style="grid-column:1/3;color:var(--muted);font-size:12px">👆 เลือกรูป 1 อันเพื่อไปหน้าพรีวิว</div>';
 }
