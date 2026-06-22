@@ -370,7 +370,10 @@ def make_ai_images(hook, caption, n=2, mode="main"):
             return arts
         except Exception as e:
             print("⚠️ images.edit ล้มเหลว, สร้างแบบปกติแทน:", str(e)[:160])
-    prompt = f"สร้างรูปขนาด 1:1 ตามนี้ {IMG_THEME}\nHook : {hook}\nCaption : {caption}"
+    prompt = ("สร้างรูปขนาด 1:1 ตามนี้ " + IMG_THEME +
+              " ห้ามมีรูปคน/ใบหน้า/อวตาร/วงกลมรูปตัวแทนประกันในภาพเด็ดขาด — "
+              "แถบติดต่อให้แสดงเฉพาะข้อความ (ชื่อตัวแทน/Line/เบอร์โทร) ไม่ต้องมีรูปถ่ายตัวแทน"
+              f"\nHook : {hook}\nCaption : {caption}")
     resp = client.images.generate(model=IMAGE_MODEL, prompt=prompt,
                                    size="1024x1024", quality=IMAGE_QUALITY, n=n)
     for i, d in enumerate(resp.data):
