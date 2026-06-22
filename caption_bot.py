@@ -340,39 +340,52 @@ IMAGE_QUALITY = "low"
 AGENT_PHOTO = os.path.join(os.path.dirname(__file__), "agent_photo.png")   # รูปตัวแทน (ถ้าอัปโหลดไว้)
 
 
-# โทนภาพที่ต้องการ — แดง/ขาว สไตล์แบรนด์ AIA
-IMG_THEME = ("ใช้โทนสีหลักเป็นแดง-ขาว (สไตล์แบรนด์ AIA) ดูสะอาด พรีเมียม ทันสมัย "
-             "ตัวหนังสืออ่านง่าย จัดวางสวยเป็นโปสเตอร์โฆษณาประกัน")
+# โทนภาพ + กฎภาพ — แดง/ขาว สไตล์แบรนด์ AIA, ภาพต้องสื่อถึงเนื้อหา, เว้นที่อวตารด้านล่าง
+IMG_THEME = ("โทนสีหลักแดง-ขาว สไตล์แบรนด์ AIA ดูสะอาด พรีเมียม ทันสมัย ตัวหนังสืออ่านง่าย เป็นโปสเตอร์โฆษณาประกัน. "
+             "ภาพประกอบ/ฉากต้อง 'สื่อถึงเนื้อหาของโพสต์' โดยตรง (เช่น ครอบครัว สุขภาพ การออม เกษียณ คุ้มครอง ตามเรื่อง). "
+             "ในแถบติดต่อด้านล่างซ้าย เว้นวงกลมว่างไว้สำหรับใส่รูปตัวแทน ห้ามวาดรูปคน/ใบหน้าในวงกลมนั้น")
+
+
+def _overlay_agent_avatar(path):
+    # แปะรูปตัวแทน 'ตัวจริง' เป็นวงกลมที่มุมล่างซ้าย (ตรงที่เว้นวงกลมว่างไว้)
+    if not os.path.exists(AGENT_PHOTO):
+        return
+    try:
+        base = Image.open(path).convert("RGBA")
+        W = base.width
+        d = int(W * 0.135)                                  # อวตาร ~13.5% ของรูป
+        ag = Image.open(AGENT_PHOTO).convert("RGBA")
+        s = min(ag.size)
+        ag = ag.crop(((ag.width - s) // 2, (ag.height - s) // 2,
+                      (ag.width - s) // 2 + s, (ag.height - s) // 2 + s)).resize((d, d))
+        mask = Image.new("L", (d, d), 0)
+        ImageDraw.Draw(mask).ellipse([0, 0, d, d], fill=255)
+        ring = max(3, int(d * 0.05))
+        rd = d + ring * 2
+        ringimg = Image.new("RGBA", (rd, rd), (0, 0, 0, 0))
+        ImageDraw.Draw(ringimg).ellipse([0, 0, rd, rd], fill=(255, 255, 255, 255))
+        m = int(W * 0.045)
+        x, y = m, base.height - rd - m                      # มุมล่างซ้าย (ตรงแถบติดต่อ)
+        base.alpha_composite(ringimg, (x, y))
+        base.paste(ag, (x + ring, y + ring), mask)
+        base.convert("RGB").save(path, "PNG")
+    except Exception as e:
+        print("overlay avatar fail:", str(e)[:120])
 
 
 def make_ai_images(hook, caption, n=2, mode="main"):
-    # ถ้ามีรูปตัวแทน → ใช้ images.edit ให้ตัวแทน 'เป็นเนื้อภาพ' (อยู่ในฉากจริง คงใบหน้าเดิม) ไม่แปะทับ
-    # ถ้าไม่มี → สร้างรูปปกติ ; ทุกกรณีคุมโทนเป็นแดง-ขาว
+    # สร้างโปสเตอร์โทนแดง-ขาว ภาพสื่อเนื้อหา + (ถ้ามีรูปตัวแทน) แปะรูปตัวจริงเป็นอวตารมุมล่างซ้าย
     photo = AGENT_PHOTO if os.path.exists(AGENT_PHOTO) else None
-    arts = []
-    if photo:
-        prompt = ("สร้างรูปโฆษณาประกันชีวิต/สุขภาพขนาด 1:1 โดยให้ 'บุคคลในรูปต้นแบบ' (ตัวแทนประกัน) "
-                  "เป็นบุคคลในภาพอย่างเป็นธรรมชาติ คงใบหน้าและลักษณะให้เหมือนเดิม ไม่ใส่กรอบหรือวงกลมซ้อน "
-                  + IMG_THEME + "\n" + f"Hook : {hook}\nCaption : {caption}")
-        try:
-            with open(photo, "rb") as imgf:
-                resp = client.images.edit(model=IMAGE_MODEL, image=imgf, prompt=prompt,
-                                          size="1024x1024", quality=IMAGE_QUALITY, n=1)
-            for i, d in enumerate(resp.data):
-                path = os.path.join(os.path.dirname(__file__), f"art_{i}.png")
-                with open(path, "wb") as f:
-                    f.write(base64.b64decode(d.b64_json))
-                arts.append({"cat": "GPT Image", "path": path})
-            return arts
-        except Exception as e:
-            print("⚠️ images.edit ล้มเหลว, สร้างแบบปกติแทน:", str(e)[:160])
     prompt = f"สร้างรูปขนาด 1:1 ตามนี้ {IMG_THEME}\nHook : {hook}\nCaption : {caption}"
     resp = client.images.generate(model=IMAGE_MODEL, prompt=prompt,
                                    size="1024x1024", quality=IMAGE_QUALITY, n=n)
+    arts = []
     for i, d in enumerate(resp.data):
         path = os.path.join(os.path.dirname(__file__), f"art_{i}.png")
         with open(path, "wb") as f:
             f.write(base64.b64decode(d.b64_json))
+        if photo:
+            _overlay_agent_avatar(path)                     # แปะรูปตัวแทนตัวจริง
         arts.append({"cat": "GPT Image", "path": path})
     return arts
 
