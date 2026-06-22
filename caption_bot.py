@@ -336,6 +336,7 @@ def make_card(text, colors=None, layout=1, out_path="card.png"):
 
 IMAGE_MODEL = "gpt-image-2"   # = GPT Images 2.0 (ห้ามเปลี่ยนเป็นตัวอื่น)
 IMAGE_QUALITY = "low"
+AGENT_QUALITY = "high"   # ตอนมีรูปตัวแทน ใช้คุณภาพสูง + input_fidelity=high เพื่อคงใบหน้าให้เหมือนสุด (ช้าลงนิดแต่หน้าเป๊ะกว่า)
 AGENT_PHOTO = os.path.join(os.path.dirname(__file__), "agent_photo.png")   # รูปตัวแทน (ถ้าอัปโหลดไว้)
 
 
@@ -385,15 +386,26 @@ def make_ai_images(hook, caption, n=2, mode="main"):
     photo = AGENT_PHOTO if os.path.exists(AGENT_PHOTO) else None
     arts = []
     if photo:
-        prompt = ("สร้างโปสเตอร์โฆษณาประกันชีวิต/สุขภาพ 1:1 โดยใช้ 'บุคคลในรูปต้นแบบ' เป็นตัวแทนประกันในภาพ "
-                  "คงใบหน้า ทรงผม และเอกลักษณ์ให้เหมือนคนต้นแบบมากที่สุด ดูเป็นคนคนเดียวกันชัดเจน "
-                  "จัดท่าทางมืออาชีพ มั่นใจ ยิ้มอบอุ่น แต่งกายสุภาพ (เบลเซอร์/สูทโทนแดงหรือขาว) "
+        prompt = ("สร้างโปสเตอร์โฆษณาประกันชีวิต/สุขภาพ 1:1 โดย 'คงใบหน้าของบุคคลในรูปต้นฉบับไว้ให้เหมือนเดิมเป๊ะที่สุด' — "
+                  "เป็นคนคนเดียวกันอย่างชัดเจน: รักษาโครงหน้า ดวงตา จมูก ปาก คิ้ว ทรงผม สีผิว และสัดส่วนใบหน้าให้ตรงกับต้นฉบับทุกประการ "
+                  "ห้ามเปลี่ยนหน้าให้เป็นคนอื่น ห้ามทำให้หน้าดูเด็กลง/แก่ลง/ผอมลง/อ้วนขึ้น ห้ามใส่หนวด/เครา/แว่นที่ไม่มีในต้นฉบับ. "
+                  "ให้วางบุคคลนี้เป็นตัวแทนประกันในฉาก จัดท่าทางมืออาชีพ มั่นใจ ยิ้มอบอุ่น แต่งกายสุภาพ (เบลเซอร์/สูทโทนแดงหรือขาว) "
+                  "หันหน้าเข้ากล้อง เห็นใบหน้าชัด แสงสว่างนุ่มนวลสม่ำเสมอบนใบหน้า ไม่มีเงาบังหน้า. "
                   "พื้นหลังออฟฟิศ/สตูดิโอสะอาด โทนแดง-ขาว ดูพรีเมียม. " + IMG_THEME +
                   f"\nHook : {hook}\nCaption : {caption}")
-        try:
+        def _edit(**extra):
             with open(photo, "rb") as imgf:
-                resp = client.images.edit(model=IMAGE_MODEL, image=imgf, prompt=prompt,
-                                          size="1024x1024", quality=IMAGE_QUALITY, n=min(n, 2))
+                return client.images.edit(model=IMAGE_MODEL, image=imgf, prompt=prompt,
+                                          size="1024x1024", quality=AGENT_QUALITY,
+                                          n=min(n, 2), **extra)
+        try:
+            try:
+                resp = _edit(input_fidelity="high")     # คงใบหน้าให้เหมือนต้นฉบับสุด
+            except Exception as fe:
+                if "input_fidelity" in str(fe):         # SDK/server ไม่รู้จัก param → ลองใหม่แบบไม่ใส่
+                    resp = _edit()
+                else:
+                    raise
             for i, d in enumerate(resp.data):
                 path = os.path.join(os.path.dirname(__file__), f"art_{i}.png")
                 with open(path, "wb") as f:
