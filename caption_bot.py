@@ -340,35 +340,45 @@ IMAGE_QUALITY = "low"
 AGENT_PHOTO = os.path.join(os.path.dirname(__file__), "agent_photo.png")   # รูปตัวแทน (ถ้าอัปโหลดไว้)
 
 
+def _overlay_agent_avatar(path):
+    # แปะรูปตัวแทนจริงเป็นวงกลม (มุมล่างซ้าย) ทับรูปที่ AI สร้าง — ได้หน้าตัวแทนจริงชัวร์
+    if not os.path.exists(AGENT_PHOTO):
+        return
+    try:
+        base = Image.open(path).convert("RGBA")
+        W = base.width
+        d = int(W * 0.17)                                   # เส้นผ่านศูนย์กลางอวตาร ~17%
+        ag = Image.open(AGENT_PHOTO).convert("RGBA")
+        s = min(ag.size)                                    # ครอปกลางเป็นสี่เหลี่ยมจัตุรัส
+        ag = ag.crop(((ag.width - s) // 2, (ag.height - s) // 2,
+                      (ag.width - s) // 2 + s, (ag.height - s) // 2 + s)).resize((d, d))
+        mask = Image.new("L", (d, d), 0)
+        ImageDraw.Draw(mask).ellipse([0, 0, d, d], fill=255)
+        ring = max(3, int(d * 0.06))                        # วงขาวรอบรูป
+        rd = d + ring * 2
+        ringimg = Image.new("RGBA", (rd, rd), (0, 0, 0, 0))
+        ImageDraw.Draw(ringimg).ellipse([0, 0, rd, rd], fill=(255, 255, 255, 255))
+        m = int(W * 0.04)
+        x, y = m, base.height - rd - m                      # มุมล่างซ้าย
+        base.alpha_composite(ringimg, (x, y))
+        base.paste(ag, (x + ring, y + ring), mask)
+        base.convert("RGB").save(path, "PNG")
+    except Exception as e:
+        print("overlay avatar fail:", str(e)[:120])
+
+
 def make_ai_images(hook, caption, n=2, agent_photo=None):
-    # สร้างรูปด้วย GPT Images 2.0 (low) — ขนาด 1:1, จำนวน n รูป
-    # ถ้ามีรูปตัวแทน → ใช้ images.edit เอาตัวแทนเข้าไปอยู่ในรูปด้วย (คงใบหน้าเดิม)
-    photo = agent_photo or (AGENT_PHOTO if os.path.exists(AGENT_PHOTO) else None)
-    arts = []
-    if photo and os.path.exists(photo):
-        prompt = ("สร้างรูปโฆษณาประกันขนาด 1:1 โดยให้ 'บุคคลในรูปต้นแบบ' (ตัวแทนประกัน) อยู่ในรูปอย่างเป็นธรรมชาติ "
-                  "คงใบหน้าและลักษณะของบุคคลให้เหมือนเดิม จัดแต่งฉาก/พื้นหลัง/ข้อความให้เข้ากับเนื้อหานี้\n"
-                  f"Hook : {hook}\nCaption : {caption}")
-        try:
-            with open(photo, "rb") as imgf:
-                resp = client.images.edit(model=IMAGE_MODEL, image=imgf, prompt=prompt,
-                                          size="1024x1024", quality=IMAGE_QUALITY, n=1)
-            for i, d in enumerate(resp.data):
-                path = os.path.join(os.path.dirname(__file__), f"art_{i}.png")
-                with open(path, "wb") as f:
-                    f.write(base64.b64decode(d.b64_json))
-                arts.append({"cat": "GPT Image", "path": path})
-            return arts
-        except Exception as e:
-            print("⚠️ images.edit (มีตัวแทน) ล้มเหลว, ใช้แบบไม่มีตัวแทนแทน:", str(e)[:160])
-    # ไม่มีรูปตัวแทน / edit ล้มเหลว → สร้างจากข้อความล้วน
+    # สร้างรูปด้วย GPT Images 2.0 (low) ขนาด 1:1 — เร็ว
+    # ถ้ามีรูปตัวแทน → แปะรูปตัวแทนจริงเป็นวงกลมมุมล่างซ้ายให้ทุกรูป
     prompt = f"สร้างรูปขนาด 1:1 ตามนี้\nHook : {hook}\nCaption : {caption}"
     resp = client.images.generate(model=IMAGE_MODEL, prompt=prompt,
                                    size="1024x1024", quality=IMAGE_QUALITY, n=n)
+    arts = []
     for i, d in enumerate(resp.data):
         path = os.path.join(os.path.dirname(__file__), f"art_{i}.png")
         with open(path, "wb") as f:
             f.write(base64.b64decode(d.b64_json))
+        _overlay_agent_avatar(path)                         # แปะหน้าตัวแทนจริง (ถ้ามี)
         arts.append({"cat": "GPT Image", "path": path})
     return arts
 
